@@ -3,5 +3,6 @@ __pycache__/
 .venv/
 venv/
 .env
-state.json
+subscriptions.yaml
 summaries/
+# state.json IS tracked — GitHub Actions commits it to remember what's been summarized.

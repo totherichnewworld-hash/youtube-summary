@@ -10,12 +10,57 @@
 |-------|------|--------|
 | 1 | Subscription list + link resolver (`feeds.py`) | ✅ done |
 | 2 | YouTube path: many channels → transcript → summary | ✅ engine built (`summarize.py`) |
-| 3 | Podcast path: RSS → cloud transcription (Deepgram/AssemblyAI) → summary | ⏳ next |
-| 4 | Email delivery + GitHub Actions schedule + state persistence | ⏳ |
-| 5 | Subscription import (Takeout/Spotify OAuth), Spotify-exclusive notes-only | ⏳ |
+| 3 | Podcast path: RSS → cloud transcription (Deepgram/AssemblyAI) → summary | ✅ done (`transcribe.py`) |
+| 4 | Email delivery + GitHub Actions schedule + state persistence | ✅ done (`run.py`, `notify.py`, workflow) |
+| 5 | Subscription import (Takeout/Spotify OAuth), Spotify-exclusive notes-only | ⏳ optional |
 
 Chosen stack: **sources** = YouTube + podcast RSS · **transcription** = cloud API
 · **delivery** = email · **runtime** = GitHub Actions.
+
+## End-to-end setup (GitHub Actions + email)
+
+`run.py` is the integrator: it reads `subscriptions.yaml`, finds new items,
+summarizes them, emails you, and records what it's done in `state.json`.
+
+**1. Add your subscriptions.** `cp subscriptions.example.yaml subscriptions.yaml`
+and add your links. (It's git-ignored; commit it if you want Actions to see it,
+or keep the example as the source of truth.)
+
+**2. Get API keys.**
+- `ANTHROPIC_API_KEY` — for the summaries.
+- A transcription key — `DEEPGRAM_API_KEY` (default) *or* `ASSEMBLYAI_API_KEY`
+  (then set repo variable `TRANSCRIBER=assemblyai`).
+
+**3. Set up email (Gmail example).** Enable 2FA, create an App Password
+(Google Account → Security → App passwords), then use:
+`SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER=you@gmail.com`,
+`SMTP_PASS=<app password>`, `MAIL_TO=you@gmail.com`.
+
+**4. Add GitHub repo secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | For |
+|--------|-----|
+| `ANTHROPIC_API_KEY` | summaries |
+| `DEEPGRAM_API_KEY` *or* `ASSEMBLYAI_API_KEY` | podcast transcription |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_TO` | email |
+
+(Optional repo **variable** `TRANSCRIBER` = `deepgram` or `assemblyai`.)
+
+**5. First run.** From the Actions tab, run the **“Summarize new subscriptions”**
+workflow manually. Leave `initial` at `0` to just seed state (no backlog spam),
+or set e.g. `2` to get the 2 newest per feed right away. After that it runs on
+the schedule in `.github/workflows/summarize.yml` (every 6h by default) and
+commits `state.json` so it never re-summarizes the same item.
+
+**Run it locally** the same way:
+
+```bash
+export ANTHROPIC_API_KEY=... DEEPGRAM_API_KEY=...   # SMTP_* optional
+python run.py --initial 2     # or just: python run.py
+```
+
+Without SMTP configured, summaries print to stdout and save under `summaries/`
+instead of emailing — handy for testing.
 
 ## Phase 1 — subscriptions
 
