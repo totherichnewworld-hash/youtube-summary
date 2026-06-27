@@ -199,10 +199,8 @@ def fetch_transcript(video_id: str, languages: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 def summarize(meta: dict, transcript: str, prompt_template: str,
-              model: str, max_tokens: int) -> str:
-    import anthropic
-
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
+              model: str | None = None, max_tokens: int = DEFAULT_MAX_TOKENS) -> str:
+    import llm
 
     instructions = prompt_template.format(
         title=meta["title"],
@@ -211,21 +209,12 @@ def summarize(meta: dict, transcript: str, prompt_template: str,
         url=meta["url"],
     )
     user_content = f"{instructions}\n\n---\nTranscript:\n{transcript}"
-
-    # Stream so long transcripts don't hit HTTP timeouts; collect the result.
-    with client.messages.stream(
-        model=model,
-        max_tokens=max_tokens,
-        thinking={"type": "adaptive"},
-        system=(
-            "You write clear, accurate summaries of YouTube video transcripts. "
-            "Stay faithful to the source and never invent details."
-        ),
-        messages=[{"role": "user", "content": user_content}],
-    ) as stream:
-        message = stream.get_final_message()
-
-    return "".join(b.text for b in message.content if b.type == "text").strip()
+    system = (
+        "You write clear, accurate summaries of video and podcast transcripts. "
+        "Stay faithful to the source and never invent details."
+    )
+    # Backend (Claude / OpenAI-compatible / local) is chosen by LLM_PROVIDER.
+    return llm.complete(system, user_content, model=model, max_tokens=max_tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +385,7 @@ def build_parser() -> argparse.ArgumentParser:
                      help="File with the customizable summary prompt (default: %(default)s)")
     run.add_argument("--state-file", dest="state_file", default=DEFAULT_STATE_FILE)
     run.add_argument("--output-dir", dest="output_dir", default=DEFAULT_OUTPUT_DIR)
-    run.add_argument("--model", default=DEFAULT_MODEL)
+    run.add_argument("--model", default=None, help="Override model (else provider default)")
     run.add_argument("--max-tokens", dest="max_tokens", type=int, default=DEFAULT_MAX_TOKENS)
     run.add_argument("--languages", type=lambda s: s.split(","), default=DEFAULT_LANGUAGES,
                      help="Comma-separated transcript language preference")
@@ -410,7 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
                       help="One or more YouTube URLs or 11-char video IDs")
     vids.add_argument("--prompt-file", dest="prompt_file", default=DEFAULT_PROMPT_FILE)
     vids.add_argument("--output-dir", dest="output_dir", default=DEFAULT_OUTPUT_DIR)
-    vids.add_argument("--model", default=DEFAULT_MODEL)
+    vids.add_argument("--model", default=None, help="Override model (else provider default)")
     vids.add_argument("--max-tokens", dest="max_tokens", type=int, default=DEFAULT_MAX_TOKENS)
     vids.add_argument("--languages", type=lambda s: s.split(","), default=DEFAULT_LANGUAGES)
     vids.set_defaults(func=cmd_videos)

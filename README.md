@@ -62,6 +62,38 @@ python run.py --initial 2     # or just: python run.py
 Without SMTP configured, summaries print to stdout and save under `summaries/`
 instead of emailing — handy for testing.
 
+## Choosing the summary model (Claude / other APIs / local)
+
+The summarizer backend is pluggable via `LLM_PROVIDER`:
+
+| `LLM_PROVIDER` | Uses | Config |
+|----------------|------|--------|
+| `anthropic` (default) | Claude via the Anthropic SDK | `ANTHROPIC_API_KEY`, optional `SUMMARY_MODEL` (default `claude-opus-4-8`) |
+| `openai` | Any **OpenAI-compatible** endpoint — OpenAI, gateways, **or local models** | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `SUMMARY_MODEL` |
+
+The `openai` provider covers far more than OpenAI — anything that speaks the
+OpenAI chat API works by pointing `OPENAI_BASE_URL` at it:
+
+```bash
+# OpenAI
+LLM_PROVIDER=openai OPENAI_API_KEY=sk-... SUMMARY_MODEL=gpt-4o-mini
+
+# Groq / OpenRouter / Together (set the gateway's base URL + key)
+LLM_PROVIDER=openai OPENAI_BASE_URL=https://api.groq.com/openai/v1 \
+  OPENAI_API_KEY=gsk_... SUMMARY_MODEL=llama-3.3-70b-versatile
+
+# Local: Ollama (no key needed)
+LLM_PROVIDER=openai OPENAI_BASE_URL=http://localhost:11434/v1 SUMMARY_MODEL=llama3.1
+
+# Local: LM Studio
+LLM_PROVIDER=openai OPENAI_BASE_URL=http://localhost:1234/v1 SUMMARY_MODEL=your-loaded-model
+```
+
+In GitHub Actions, set `LLM_PROVIDER`, `SUMMARY_MODEL`, and `OPENAI_BASE_URL` as
+repo **variables** and `OPENAI_API_KEY` as a **secret**. Note: a **local** model
+can't be reached from GitHub's runners — use a hosted API there, and reserve
+local models for when you run `python run.py` on your own machine.
+
 ## Phase 1 — subscriptions
 
 List the things you follow as plain links in `subscriptions.yaml` (copy

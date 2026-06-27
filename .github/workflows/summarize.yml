@@ -33,7 +33,13 @@ jobs:
 
       - name: Run summarizer
         env:
+          # Summarization backend: 'anthropic' (default) or 'openai'
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'anthropic' }}
+          SUMMARY_MODEL: ${{ vars.SUMMARY_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # For LLM_PROVIDER=openai (OpenAI, a gateway, or a hosted local model)
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           # Transcription (set whichever provider you use)
           TRANSCRIBER: ${{ vars.TRANSCRIBER || 'deepgram' }}
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}

@@ -106,7 +106,7 @@ def main() -> int:
     p.add_argument("--prompt-file", default="prompt.txt")
     p.add_argument("--state-file", default="state.json")
     p.add_argument("--output-dir", default="summaries")
-    p.add_argument("--model", default=summarize.DEFAULT_MODEL)
+    p.add_argument("--model", default=None, help="Override model (else provider default)")
     p.add_argument("--max-tokens", type=int, default=summarize.DEFAULT_MAX_TOKENS)
     p.add_argument("--languages", type=lambda s: s.split(","),
                    default=summarize.DEFAULT_LANGUAGES)
