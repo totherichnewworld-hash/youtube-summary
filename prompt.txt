@@ -5,10 +5,10 @@ Channel: {channel}
 Published: {published}
 URL: {url}
 
-Write a clear, well-structured summary of the transcript below. Include:
+请用中文撰写一份清晰、条理分明的摘要，涵盖以下内容（无论原文是什么语言，摘要一律用中文）：
 
-1. **TL;DR** — 2-3 sentences capturing the core message.
-2. **Key points** — the main ideas as a bulleted list.
-3. **Notable details** — any specific facts, numbers, names, or recommendations worth remembering.
+1. **一句话总结** — 用 2-3 句话概括核心信息。
+2. **重点内容** — 以要点列表呈现主要观点。
+3. **值得记住的细节** — 任何具体的事实、数字、人名或建议。
 
-Keep it concise and faithful to the source. Do not invent information that is not in the transcript.
+保持简洁，忠于原文，不要编造文稿中没有的信息。
