@@ -159,6 +159,46 @@ def resolve_rss(link: str) -> dict:
     return {"kind": "podcast", "title": title, "feed_url": link, "source": link}
 
 
+def parse_podcast_feed(feed_url: str, limit: int = 15) -> list[dict]:
+    """Parse a podcast RSS feed into a list of episodes (newest first).
+
+    Each episode: {id, title, published, audio_url, page_url, description, channel}.
+    Episodes without a downloadable audio enclosure are skipped.
+    """
+    import feedparser
+
+    raw = requests.get(feed_url, headers=HEADERS, timeout=TIMEOUT).content
+    parsed = feedparser.parse(raw)
+    channel = parsed.feed.get("title", feed_url)
+
+    episodes = []
+    for entry in parsed.entries[:limit]:
+        audio_url = None
+        for enc in entry.get("enclosures", []) or []:
+            if str(enc.get("type", "")).startswith("audio") or enc.get("href"):
+                audio_url = enc.get("href") or enc.get("url")
+                if audio_url:
+                    break
+        if not audio_url:
+            for link in entry.get("links", []) or []:
+                if link.get("rel") == "enclosure" and link.get("href"):
+                    audio_url = link["href"]
+                    break
+        if not audio_url:
+            continue  # nothing to transcribe (e.g. a video-only or teaser item)
+
+        episodes.append({
+            "id": entry.get("id") or entry.get("guid") or audio_url,
+            "title": entry.get("title", "(untitled)"),
+            "published": entry.get("published", ""),
+            "audio_url": audio_url,
+            "page_url": entry.get("link", ""),
+            "description": entry.get("summary", ""),
+            "channel": channel,
+        })
+    return episodes
+
+
 def _feed_title(feed_url: str) -> str | None:
     try:
         import feedparser
