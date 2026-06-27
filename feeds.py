@@ -47,6 +47,10 @@ def classify(link: str) -> str:
         return "apple"
     if "open.spotify.com" in link.lower():
         return "spotify"
+    # A bare name (no URL scheme, no domain dot, not a @handle) -> look it up by
+    # name in the podcast directory.
+    if "://" not in link and "." not in link and not link.startswith("@"):
+        return "search"
     return "rss"
 
 
@@ -154,6 +158,38 @@ def resolve_spotify(link: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Search by name  (iTunes podcast directory -> RSS feed)
+# ---------------------------------------------------------------------------
+
+def resolve_search(name: str) -> dict:
+    """Resolve a bare podcast NAME to its RSS feed via the iTunes directory."""
+    data = requests.get(
+        "https://itunes.apple.com/search",
+        params={"term": name, "entity": "podcast", "limit": 10},
+        headers=HEADERS, timeout=TIMEOUT,
+    ).json()
+    results = [r for r in data.get("results", []) if r.get("feedUrl")]
+    if not results:
+        raise RuntimeError(
+            f"No podcast found for name {name!r}. "
+            "Paste its Apple Podcasts, Spotify, or RSS link instead."
+        )
+    # Prefer an exact (case-insensitive) name match; otherwise take the top hit.
+    target = name.strip().casefold()
+    best = next(
+        (r for r in results if (r.get("collectionName") or "").strip().casefold() == target),
+        results[0],
+    )
+    return {
+        "kind": "podcast",
+        "title": best.get("collectionName") or name,
+        "feed_url": best["feedUrl"],
+        "source": name,
+        "note": "resolved by name search — verify it's the right show",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Raw RSS
 # ---------------------------------------------------------------------------
 
@@ -250,6 +286,7 @@ _RESOLVERS = {
     "youtube": resolve_youtube,
     "apple": resolve_apple,
     "spotify": resolve_spotify,
+    "search": resolve_search,
     "rss": resolve_rss,
 }
 

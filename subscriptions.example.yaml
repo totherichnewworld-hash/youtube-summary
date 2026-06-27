@@ -5,6 +5,7 @@
 #   - Apple Podcasts:    https://podcasts.apple.com/us/podcast/name/id123456789
 #   - Spotify show:      https://open.spotify.com/show/XXXXXXXXXXXXXXXXXXXXXX
 #   - Raw RSS feed:      https://feeds.example.com/show.xml
+#   - Podcast NAME:      投资实战派         (looked up in the Apple/iTunes directory)
 #
 # A plain link uses the shared default prompt (prompt.txt). To give one
 # subscription its OWN summary instructions, use the mapping form with either
