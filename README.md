@@ -1,4 +1,43 @@
-# YouTube channel summarizer
+# Subscription summarizer
+
+> **Goal:** get an emailed summary whenever a channel/podcast you follow
+> (YouTube, Apple Podcasts, or Spotify) publishes something new — run
+> automatically on GitHub Actions.
+
+## Roadmap
+
+| Phase | What | Status |
+|-------|------|--------|
+| 1 | Subscription list + link resolver (`feeds.py`) | ✅ done |
+| 2 | YouTube path: many channels → transcript → summary | ✅ engine built (`summarize.py`) |
+| 3 | Podcast path: RSS → cloud transcription (Deepgram/AssemblyAI) → summary | ⏳ next |
+| 4 | Email delivery + GitHub Actions schedule + state persistence | ⏳ |
+| 5 | Subscription import (Takeout/Spotify OAuth), Spotify-exclusive notes-only | ⏳ |
+
+Chosen stack: **sources** = YouTube + podcast RSS · **transcription** = cloud API
+· **delivery** = email · **runtime** = GitHub Actions.
+
+## Phase 1 — subscriptions
+
+List the things you follow as plain links in `subscriptions.yaml` (copy
+`subscriptions.example.yaml`). The resolver turns each link into a normalized
+feed:
+
+```bash
+cp subscriptions.example.yaml subscriptions.yaml
+# edit subscriptions.yaml to add your links, then validate:
+python feeds.py subscriptions.yaml
+```
+
+Each line can be a YouTube channel (`@handle` or `UC...`), an Apple Podcasts
+show URL, a Spotify show URL, or a raw RSS feed. Apple/Spotify links are
+resolved to the show's underlying RSS feed (Spotify via a best-effort
+title match — verify the result). Spotify-*exclusive* shows have no public
+feed and can only be handled notes-only (Phase 5).
+
+---
+
+## YouTube channel summarizer (engine)
 
 Watches a YouTube channel and, whenever a **new video** is uploaded, fetches its
 transcript and writes a summary with Claude. The summary prompt is fully
