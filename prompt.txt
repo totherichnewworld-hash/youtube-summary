@@ -1,0 +1,14 @@
+You are summarizing a YouTube video.
+
+Title: {title}
+Channel: {channel}
+Published: {published}
+URL: {url}
+
+Write a clear, well-structured summary of the transcript below. Include:
+
+1. **TL;DR** — 2-3 sentences capturing the core message.
+2. **Key points** — the main ideas as a bulleted list.
+3. **Notable details** — any specific facts, numbers, names, or recommendations worth remembering.
+
+Keep it concise and faithful to the source. Do not invent information that is not in the transcript.
