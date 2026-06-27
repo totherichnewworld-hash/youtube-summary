@@ -93,15 +93,24 @@ def deliver(item: dict, summary: str, transcript: str, output_dir: Path,
         tpath = summarize.write_transcript(transcript_dir, meta, transcript)
         print(f"  -> saved transcript {tpath}", file=sys.stderr)
 
+    # Push channels are independent; each fires only if it's configured. The
+    # summary is always saved to a file above (read it on GitHub), so no
+    # channel needs to be set up for the pipeline to be useful.
+    subject = f"[{item['channel']}] {item['title']}"
+    body = (
+        f"{item['title']}\n{item['channel']} — {item['published']}\n"
+        f"{item['url']}\n\n{summary}\n"
+    )
+    pushed = False
     if notify.email_configured():
-        subject = f"[{item['channel']}] {item['title']}"
-        body = (
-            f"{item['title']}\n{item['channel']} — {item['published']}\n"
-            f"{item['url']}\n\n{summary}\n"
-        )
         notify.send_email(subject, body)
         print("  -> emailed", file=sys.stderr)
-    else:
+        pushed = True
+    if notify.discord_configured():
+        notify.send_discord(subject, body)
+        print("  -> posted to Discord", file=sys.stderr)
+        pushed = True
+    if not pushed:
         print(f"\n{summary}\n", file=sys.stdout)
 
 
@@ -112,6 +121,41 @@ def _env_flag(name: str, default: bool) -> bool:
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
+def build_index(output_dir: Path, index_path: Path) -> None:
+    """(Re)build a single Markdown index of every saved summary, newest first.
+
+    Open this one page on GitHub for your daily read; each row links to the
+    full Chinese summary. Safe to run every time — it just rewrites the page.
+    """
+    from urllib.parse import quote
+
+    rows = []
+    for md in output_dir.glob("*.md"):
+        title = channel = published = ""
+        for line in md.read_text(encoding="utf-8").splitlines():
+            if line.startswith("# ") and not title:
+                title = line[2:].strip()
+            elif line.startswith("- **Channel:**"):
+                channel = line.split("**Channel:**", 1)[1].strip()
+            elif line.startswith("- **Published:**"):
+                published = line.split("**Published:**", 1)[1].strip()
+        rows.append((published, channel, title or md.stem, md.name))
+
+    rows.sort(reverse=True)  # ISO-ish dates sort correctly as strings
+    lines = [
+        "# 摘要 Summaries",
+        "",
+        f"_{len(rows)} summaries — newest first. Updated automatically._",
+        "",
+        "| Date | Channel | Title |",
+        "|------|---------|-------|",
+    ]
+    for published, channel, title, name in rows:
+        link = f"{output_dir.name}/{quote(name)}"
+        lines.append(f"| {published[:10] or '—'} | {channel} | [{title}]({link}) |")
+    index_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -119,6 +163,8 @@ def main() -> int:
     p.add_argument("--prompt-file", default="prompt.txt")
     p.add_argument("--state-file", default="state.json")
     p.add_argument("--output-dir", default="summaries")
+    p.add_argument("--index-file", default="SUMMARIES.md",
+                   help="Markdown index of all summaries for your daily read")
     p.add_argument("--transcript-dir", default="transcripts",
                    help="Where to save full transcripts (default: %(default)s)")
     p.add_argument("--save-transcripts", action=argparse.BooleanOptionalAction,
@@ -210,6 +256,10 @@ def main() -> int:
     state["seen"] = sorted(seen)
     state["initialized"] = True
     save_state(state_path, state)
+
+    # Refresh the index page so the daily-read list stays current.
+    if output_dir.exists() and any(output_dir.glob("*.md")):
+        build_index(output_dir, Path(args.index_file))
 
     if first_run and args.initial == 0:
         print("First run: seeded state; new items from now on will be summarized.",

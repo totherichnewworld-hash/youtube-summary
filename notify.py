@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Deliver a summary by email over SMTP.
+Deliver a summary by email (SMTP) and/or Discord (webhook).
 
-Configuration comes from environment variables (set these as GitHub Actions
-secrets):
+Each channel is independent: it fires only if its config is present, so you can
+use email, Discord, both, or neither (summaries are always written to files too,
+so reading them on GitHub works with no config at all).
+
+Email configuration comes from environment variables (set these as GitHub
+Actions secrets):
 
     SMTP_HOST     e.g. smtp.gmail.com
     SMTP_PORT     e.g. 587 (STARTTLS) or 465 (SSL)
@@ -29,6 +33,32 @@ from email.message import EmailMessage
 
 def email_configured() -> bool:
     return all(os.environ.get(k) for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS", "MAIL_TO"))
+
+
+# ---------------------------------------------------------------------------
+# Discord  (incoming webhook URL — no login, just a URL you create in a server)
+# ---------------------------------------------------------------------------
+
+def discord_configured() -> bool:
+    return bool(os.environ.get("DISCORD_WEBHOOK_URL"))
+
+
+def send_discord(subject: str, body: str) -> None:
+    """Post a message to a Discord channel via its webhook URL.
+
+    Discord caps a message's content at 2000 chars, so long summaries are split
+    into multiple messages.
+    """
+    import requests
+
+    url = os.environ["DISCORD_WEBHOOK_URL"]
+    text = f"**{subject}**\n{body}".strip()
+
+    chunk_size = 1900  # leave headroom under Discord's 2000-char limit
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)] or [""]
+    for chunk in chunks:
+        resp = requests.post(url, json={"content": chunk}, timeout=30)
+        resp.raise_for_status()
 
 
 def send_email(subject: str, body: str) -> None:

@@ -3,8 +3,10 @@ __pycache__/
 .venv/
 venv/
 .env
-summaries/
+# summaries/ and transcripts/ ARE tracked so you can read them on GitHub
+# (the workflow commits them, and SUMMARIES.md is the index page for your
+# daily read). If your repo is public and the content is private, make the
+# repo private.
 # subscriptions.yaml IS tracked so GitHub Actions can read your list (it's just
-# links, not secrets). If your repo is public and you'd rather keep the list
-# private, make the repo private.
+# links, not secrets).
 # state.json IS tracked — GitHub Actions commits it to remember what's been summarized.

@@ -55,13 +55,15 @@ jobs:
           TRANSCRIBER: ${{ vars.TRANSCRIBER || 'deepgram' }}
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
-          # Email delivery (SMTP)
+          # Email delivery (SMTP) — optional
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
+          # Discord delivery (webhook URL) — optional
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python run.py --initial "${{ github.event.inputs.initial || '0' }}"
 
       - name: Persist state
@@ -70,9 +72,11 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json
+          if [ -d summaries ]; then git add summaries; fi
           if [ -d transcripts ]; then git add transcripts; fi
+          if [ -f SUMMARIES.md ]; then git add SUMMARIES.md; fi
           if ! git diff --cached --quiet; then
-            git commit -m "Update summary state and transcripts [skip ci]"
+            git commit -m "Update summaries, transcripts and state [skip ci]"
             git push
           else
             echo "Nothing to commit."
