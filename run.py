@@ -80,6 +80,7 @@ def collect_items(feed: dict, limit: int, all_history: bool = False) -> list[dic
             "url": ep["page_url"] or ep["audio_url"],
             "audio_url": ep["audio_url"],
             "description": ep["description"],
+            "transcripts": ep.get("transcripts") or [],
         })
     return items
 
@@ -87,6 +88,13 @@ def collect_items(feed: dict, limit: int, all_history: bool = False) -> list[dic
 def get_transcript(item: dict, languages: list[str]) -> str:
     if item["kind"] == "youtube":
         return summarize.fetch_transcript(item["video_id"], languages)
+    # Prefer a transcript the podcast already published in its feed (free); only
+    # fall back to paid cloud transcription of the audio when there isn't one.
+    published = transcribe.published_transcript(item.get("transcripts") or [])
+    if published:
+        print("    -> using transcript from the feed (no transcription needed)",
+              file=sys.stderr)
+        return published
     return transcribe.transcribe(item["audio_url"])
 
 

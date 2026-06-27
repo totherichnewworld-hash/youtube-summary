@@ -13,11 +13,105 @@ CLI:  python transcribe.py <audio_url>
 
 from __future__ import annotations
 
+import json as _json
 import os
+import re
 import sys
 import time
 
 import requests
+
+
+# ---------------------------------------------------------------------------
+# Published transcripts (Podcasting 2.0 <podcast:transcript>) — free, no API
+# ---------------------------------------------------------------------------
+
+# Most text-friendly formats first.
+_TYPE_PREFERENCE = [
+    "text/plain", "application/json", "text/vtt",
+    "application/x-subrip", "application/srt", "text/srt", "text/html",
+]
+
+
+def published_transcript(refs: list[dict]) -> str | None:
+    """Fetch a transcript already published in the feed, or None if there isn't
+    one we can use. Tries the most readable format first and falls back through
+    the rest if a download or parse fails."""
+    if not refs:
+        return None
+
+    def rank(ref: dict) -> int:
+        t = ref.get("type", "")
+        return _TYPE_PREFERENCE.index(t) if t in _TYPE_PREFERENCE else len(_TYPE_PREFERENCE)
+
+    for ref in sorted(refs, key=rank):
+        url = ref.get("url")
+        if not url:
+            continue
+        try:
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=120)
+            resp.raise_for_status()
+            text = _parse_transcript(resp.text, ref.get("type", ""), url)
+        except Exception:
+            continue
+        if text and text.strip():
+            return text.strip()
+    return None
+
+
+def _parse_transcript(body: str, mime: str, url: str) -> str:
+    kind = mime
+    if not kind:  # infer from the URL extension
+        ext = url.lower().rsplit(".", 1)[-1] if "." in url else ""
+        kind = {"vtt": "text/vtt", "srt": "application/srt", "json": "application/json",
+                "html": "text/html", "txt": "text/plain"}.get(ext, "")
+    if "json" in kind:
+        return _parse_json_transcript(body)
+    if "vtt" in kind:
+        return _parse_vtt_srt(body)
+    if "srt" in kind or "subrip" in kind:
+        return _parse_vtt_srt(body)
+    if "html" in kind:
+        return re.sub(r"<[^>]+>", " ", body)
+    # text/plain or unknown: VTT/SRT detection, else return as-is.
+    if body.lstrip().startswith("WEBVTT") or "-->" in body[:2000]:
+        return _parse_vtt_srt(body)
+    return body
+
+
+def _parse_json_transcript(body: str) -> str:
+    """Podcast Index transcript JSON: {"segments":[{"body"/"text": "..."}]}."""
+    data = _json.loads(body)
+    segments = data.get("segments") if isinstance(data, dict) else None
+    if not segments:
+        return ""
+    parts = []
+    for seg in segments:
+        if isinstance(seg, dict):
+            piece = seg.get("body") or seg.get("text") or ""
+            if piece:
+                parts.append(piece.strip())
+    return " ".join(parts)
+
+
+def _parse_vtt_srt(body: str) -> str:
+    """Strip WEBVTT/SRT timestamps, cue numbers, and tags; collapse repeats."""
+    out = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line == "WEBVTT" or line.startswith("NOTE"):
+            continue
+        if "-->" in line:           # timestamp line
+            continue
+        if line.isdigit():          # SRT cue index
+            continue
+        line = re.sub(r"<[^>]+>", "", line)        # inline cue tags
+        line = re.sub(r"^\s*\d+:\d+:\d+[.,]\d+\s*", "", line)
+        if line and (not out or out[-1] != line):  # drop consecutive duplicates
+            out.append(line)
+    return "\n".join(out)
 
 def transcribe(audio_url: str, provider: str | None = None,
                language: str | None = None) -> str:

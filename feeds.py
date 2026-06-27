@@ -220,6 +220,7 @@ def parse_podcast_feed(feed_url: str, limit: int = 15) -> list[dict]:
         audio_url = _enclosure_url(item)
         if not audio_url:
             continue  # nothing to transcribe (e.g. a teaser or video-only item)
+        transcripts = _transcript_refs(item)  # Podcasting 2.0 published transcripts
         if channel is not None:  # RSS 2.0 fields are unqualified
             episodes.append({
                 "id": (item.findtext("guid") or "").strip() or audio_url,
@@ -229,6 +230,7 @@ def parse_podcast_feed(feed_url: str, limit: int = 15) -> list[dict]:
                 "page_url": item.findtext("link") or "",
                 "description": item.findtext("description") or "",
                 "channel": channel_title,
+                "transcripts": transcripts,
             })
         else:                    # Atom fields
             episodes.append({
@@ -240,8 +242,22 @@ def parse_podcast_feed(feed_url: str, limit: int = 15) -> list[dict]:
                 "page_url": _atom_link(item),
                 "description": item.findtext(f"{ATOM}summary") or "",
                 "channel": channel_title,
+                "transcripts": transcripts,
             })
     return episodes
+
+
+def _transcript_refs(item: ET.Element) -> list[dict]:
+    """Collect Podcasting 2.0 <podcast:transcript> refs from an item.
+
+    Matched by local tag name so any namespace URI variant works. Each ref is
+    {"url": str, "type": str} (type may be '' if the feed omits it).
+    """
+    refs = []
+    for el in item.iter():
+        if el.tag.rsplit("}", 1)[-1] == "transcript" and el.get("url"):
+            refs.append({"url": el.get("url"), "type": (el.get("type") or "").lower()})
+    return refs
 
 
 def _enclosure_url(item: ET.Element) -> str | None:
