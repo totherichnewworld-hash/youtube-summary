@@ -3,6 +3,8 @@ __pycache__/
 .venv/
 venv/
 .env
-subscriptions.yaml
 summaries/
+# subscriptions.yaml IS tracked so GitHub Actions can read your list (it's just
+# links, not secrets). If your repo is public and you'd rather keep the list
+# private, make the repo private.
 # state.json IS tracked — GitHub Actions commits it to remember what's been summarized.

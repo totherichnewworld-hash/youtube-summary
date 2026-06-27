@@ -123,7 +123,12 @@ def main() -> int:
     seen = set(state.get("seen", []))
     first_run = not state.get("initialized")
 
-    links = feeds.load_subscriptions(args.subscriptions)
+    sub_path = args.subscriptions
+    if not Path(sub_path).exists() and Path("subscriptions.example.yaml").exists():
+        print(f"{sub_path} not found; falling back to subscriptions.example.yaml",
+              file=sys.stderr)
+        sub_path = "subscriptions.example.yaml"
+    links = feeds.load_subscriptions(sub_path)
     print(f"{len(links)} subscription(s).", file=sys.stderr)
 
     exit_code = 0
