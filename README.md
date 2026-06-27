@@ -44,6 +44,20 @@ python summarize.py run --channel UCxxxxxxxxxxxxxxxxxxxxxx
 python summarize.py resolve --channel @ltshijie
 ```
 
+### Summarize specific videos (ad-hoc)
+
+To summarize an explicit list of videos instead of watching a channel — handy
+for testing or one-offs — use `videos`. It accepts full URLs (including ones
+with extra `&list=` / `&start_radio=` params), `youtu.be` short links, or bare
+11-char IDs, and ignores `state.json`:
+
+```bash
+python summarize.py videos \
+  https://www.youtube.com/watch?v=tJewzQT8ANI \
+  https://www.youtube.com/watch?v=5E75Wj4lXZE \
+  yJtckcMHM2g
+```
+
 ## Customizing the summary prompt
 
 Edit **`prompt.txt`** — this is the instruction Claude follows. It supports these

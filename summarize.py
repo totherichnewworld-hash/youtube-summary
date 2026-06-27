@@ -99,6 +99,37 @@ def resolve_channel_id(channel: str) -> str:
     )
 
 
+def extract_video_id(s: str) -> str:
+    """Pull an 11-char video ID out of a URL or accept a bare ID."""
+    s = s.strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", s):
+        return s
+    for pattern in (
+        r"[?&]v=([A-Za-z0-9_-]{11})",          # watch?v=ID
+        r"youtu\.be/([A-Za-z0-9_-]{11})",      # youtu.be/ID
+        r"/(?:embed|shorts|live)/([A-Za-z0-9_-]{11})",
+    ):
+        m = re.search(pattern, s)
+        if m:
+            return m.group(1)
+    raise ValueError(f"Could not extract a video ID from {s!r}")
+
+
+def fetch_video_meta(video_id: str) -> dict:
+    """Best-effort title/channel via YouTube's oEmbed endpoint."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    meta = {"video_id": video_id, "title": video_id, "channel": "",
+            "published": "", "url": url}
+    try:
+        data = json.loads(_http_get(
+            f"https://www.youtube.com/oembed?url={url}&format=json"))
+        meta["title"] = data.get("title", video_id)
+        meta["channel"] = data.get("author_name", "")
+    except Exception:
+        pass  # oEmbed is a nicety; summary still works without it
+    return meta
+
+
 def fetch_feed(channel_id: str) -> list[dict]:
     """Return the channel's recent uploads from its Atom RSS feed, newest first."""
     feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
@@ -305,6 +336,46 @@ def cmd_run(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def cmd_videos(args: argparse.Namespace) -> int:
+    """Summarize an explicit list of video URLs/IDs (ad-hoc; ignores state)."""
+    prompt_template = Path(args.prompt_file).read_text(encoding="utf-8")
+    output_dir = Path(args.output_dir)
+    exit_code = 0
+
+    for raw in args.videos:
+        try:
+            video_id = extract_video_id(raw)
+        except ValueError as e:
+            print(f"! {e}", file=sys.stderr)
+            exit_code = 1
+            continue
+
+        meta = fetch_video_meta(video_id)
+        print(f"\n=== {meta['title']} ({meta['url']}) ===", file=sys.stderr)
+
+        try:
+            transcript = fetch_transcript(video_id, args.languages)
+        except Exception as e:
+            print(f"  ! No transcript available, skipping: {e}", file=sys.stderr)
+            exit_code = 1
+            continue
+
+        try:
+            summary = summarize(
+                meta, transcript, prompt_template, args.model, args.max_tokens
+            )
+        except Exception as e:
+            print(f"  ! Summarization failed: {e}", file=sys.stderr)
+            exit_code = 1
+            continue
+
+        out_path = write_summary(output_dir, meta, summary)
+        print(f"\n{summary}\n", file=sys.stdout)
+        print(f"  -> saved {out_path}", file=sys.stderr)
+
+    return exit_code
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     print(resolve_channel_id(args.channel))
     return 0
@@ -332,6 +403,17 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--initial", type=int, default=0, metavar="N",
                      help="On first run, summarize the N newest videos (default: 0 = seed only)")
     run.set_defaults(func=cmd_run)
+
+    vids = sub.add_parser("videos",
+                          help="Summarize specific video URLs/IDs (ignores state)")
+    vids.add_argument("videos", nargs="+", metavar="URL_OR_ID",
+                      help="One or more YouTube URLs or 11-char video IDs")
+    vids.add_argument("--prompt-file", dest="prompt_file", default=DEFAULT_PROMPT_FILE)
+    vids.add_argument("--output-dir", dest="output_dir", default=DEFAULT_OUTPUT_DIR)
+    vids.add_argument("--model", default=DEFAULT_MODEL)
+    vids.add_argument("--max-tokens", dest="max_tokens", type=int, default=DEFAULT_MAX_TOKENS)
+    vids.add_argument("--languages", type=lambda s: s.split(","), default=DEFAULT_LANGUAGES)
+    vids.set_defaults(func=cmd_videos)
 
     res = sub.add_parser("resolve", parents=[common],
                          help="Print the resolved channel ID and exit")
