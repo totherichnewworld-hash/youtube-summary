@@ -261,6 +261,25 @@ def write_summary(output_dir: Path, meta: dict, summary: str) -> Path:
     return path
 
 
+def _safe_filename(meta: dict) -> str:
+    safe_title = re.sub(r"[^\w\- ]+", "", meta["title"]).strip().replace(" ", "_")[:60]
+    return f"{meta['published'][:10] or 'undated'}_{meta['video_id']}_{safe_title}"
+
+
+def write_transcript(output_dir: Path, meta: dict, transcript: str) -> Path:
+    """Save the full (untruncated) transcript next to its summary, as plain text."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"{_safe_filename(meta)}.txt"
+    header = (
+        f"{meta['title']}\n"
+        f"{meta['channel']} — {meta['published']}\n"
+        f"{meta['url']}\n"
+        f"{'=' * 60}\n\n"
+    )
+    path.write_text(header + transcript.strip() + "\n", encoding="utf-8")
+    return path
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------

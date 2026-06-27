@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -79,13 +80,18 @@ def get_transcript(item: dict, languages: list[str]) -> str:
     return transcribe.transcribe(item["audio_url"])
 
 
-def deliver(item: dict, summary: str, output_dir: Path) -> None:
+def deliver(item: dict, summary: str, transcript: str, output_dir: Path,
+            transcript_dir: Path | None) -> None:
     meta = {
         "title": item["title"], "channel": item["channel"],
         "published": item["published"], "video_id": item["id"], "url": item["url"],
     }
     path = summarize.write_summary(output_dir, meta, summary)
     print(f"  -> saved {path}", file=sys.stderr)
+
+    if transcript_dir is not None and transcript:
+        tpath = summarize.write_transcript(transcript_dir, meta, transcript)
+        print(f"  -> saved transcript {tpath}", file=sys.stderr)
 
     if notify.email_configured():
         subject = f"[{item['channel']}] {item['title']}"
@@ -99,6 +105,13 @@ def deliver(item: dict, summary: str, output_dir: Path) -> None:
         print(f"\n{summary}\n", file=sys.stdout)
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -106,6 +119,12 @@ def main() -> int:
     p.add_argument("--prompt-file", default="prompt.txt")
     p.add_argument("--state-file", default="state.json")
     p.add_argument("--output-dir", default="summaries")
+    p.add_argument("--transcript-dir", default="transcripts",
+                   help="Where to save full transcripts (default: %(default)s)")
+    p.add_argument("--save-transcripts", action=argparse.BooleanOptionalAction,
+                   default=_env_flag("SAVE_TRANSCRIPTS", True),
+                   help="Save the full transcript next to each summary "
+                        "(env: SAVE_TRANSCRIPTS; default: on)")
     p.add_argument("--model", default=None, help="Override model (else provider default)")
     p.add_argument("--max-tokens", type=int, default=summarize.DEFAULT_MAX_TOKENS)
     p.add_argument("--max-transcript-chars", type=int,
@@ -121,6 +140,7 @@ def main() -> int:
 
     state_path = Path(args.state_file)
     output_dir = Path(args.output_dir)
+    transcript_dir = Path(args.transcript_dir) if args.save_transcripts else None
     prompt_template = Path(args.prompt_file).read_text(encoding="utf-8")
     state = load_state(state_path)
     seen = set(state.get("seen", []))
@@ -182,7 +202,7 @@ def main() -> int:
                 exit_code = 1
                 continue  # leave unseen so it's retried
 
-            deliver(item, summary, output_dir)
+            deliver(item, summary, transcript, output_dir, transcript_dir)
             seen.add(item["id"])
             state["seen"] = sorted(seen)
             save_state(state_path, state)

@@ -44,6 +44,9 @@ jobs:
           # otherwise the code default (4096). Set vars.SUMMARY_MAX_TOKENS once
           # in Settings -> Secrets and variables -> Actions -> Variables.
           SUMMARY_MAX_TOKENS: ${{ github.event.inputs.max_tokens || vars.SUMMARY_MAX_TOKENS }}
+          # Save full transcripts to transcripts/ (committed below). Set the repo
+          # Variable SAVE_TRANSCRIPTS to 'false' to turn this off.
+          SAVE_TRANSCRIPTS: ${{ vars.SAVE_TRANSCRIPTS || 'true' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # For LLM_PROVIDER=openai (OpenAI, a gateway, or a hosted local model)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -67,9 +70,10 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json
+          if [ -d transcripts ]; then git add transcripts; fi
           if ! git diff --cached --quiet; then
-            git commit -m "Update summary state [skip ci]"
+            git commit -m "Update summary state and transcripts [skip ci]"
             git push
           else
-            echo "No state changes to commit."
+            echo "Nothing to commit."
           fi
