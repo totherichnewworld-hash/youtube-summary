@@ -19,12 +19,9 @@ import time
 
 import requests
 
-DEFAULT_PROVIDER = os.environ.get("TRANSCRIBER", "deepgram").lower()
-
-
 def transcribe(audio_url: str, provider: str | None = None,
                language: str | None = None) -> str:
-    provider = (provider or DEFAULT_PROVIDER).lower()
+    provider = (provider or os.environ.get("TRANSCRIBER", "deepgram")).lower()
     if provider == "deepgram":
         return _deepgram(audio_url, language)
     if provider == "assemblyai":
