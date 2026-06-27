@@ -1,6 +1,5 @@
 anthropic>=0.40.0
 youtube-transcript-api>=0.6.2
-feedparser>=6.0
 requests>=2.31
 PyYAML>=6.0
 # Only needed when LLM_PROVIDER=openai (OpenAI, gateways, or local models).

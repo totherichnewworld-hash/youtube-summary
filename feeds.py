@@ -21,8 +21,11 @@ from __future__ import annotations
 
 import re
 import sys
+from xml.etree import ElementTree as ET
 
 import requests
+
+ATOM = "{http://www.w3.org/2005/Atom}"
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -160,52 +163,81 @@ def resolve_rss(link: str) -> dict:
 
 
 def parse_podcast_feed(feed_url: str, limit: int = 15) -> list[dict]:
-    """Parse a podcast RSS feed into a list of episodes (newest first).
+    """Parse a podcast RSS/Atom feed into episodes (newest first), stdlib only.
 
     Each episode: {id, title, published, audio_url, page_url, description, channel}.
     Episodes without a downloadable audio enclosure are skipped.
     """
-    import feedparser
-
     raw = requests.get(feed_url, headers=HEADERS, timeout=TIMEOUT).content
-    parsed = feedparser.parse(raw)
-    channel = parsed.feed.get("title", feed_url)
+    root = ET.fromstring(raw)
+
+    channel = root.find("channel")  # RSS 2.0
+    if channel is not None:
+        channel_title = channel.findtext("title") or feed_url
+        item_nodes = channel.findall("item")
+    else:                            # Atom fallback
+        channel_title = root.findtext(f"{ATOM}title") or feed_url
+        item_nodes = root.findall(f"{ATOM}entry")
 
     episodes = []
-    for entry in parsed.entries[:limit]:
-        audio_url = None
-        for enc in entry.get("enclosures", []) or []:
-            if str(enc.get("type", "")).startswith("audio") or enc.get("href"):
-                audio_url = enc.get("href") or enc.get("url")
-                if audio_url:
-                    break
+    for item in item_nodes[:limit]:
+        audio_url = _enclosure_url(item)
         if not audio_url:
-            for link in entry.get("links", []) or []:
-                if link.get("rel") == "enclosure" and link.get("href"):
-                    audio_url = link["href"]
-                    break
-        if not audio_url:
-            continue  # nothing to transcribe (e.g. a video-only or teaser item)
-
-        episodes.append({
-            "id": entry.get("id") or entry.get("guid") or audio_url,
-            "title": entry.get("title", "(untitled)"),
-            "published": entry.get("published", ""),
-            "audio_url": audio_url,
-            "page_url": entry.get("link", ""),
-            "description": entry.get("summary", ""),
-            "channel": channel,
-        })
+            continue  # nothing to transcribe (e.g. a teaser or video-only item)
+        if channel is not None:  # RSS 2.0 fields are unqualified
+            episodes.append({
+                "id": (item.findtext("guid") or "").strip() or audio_url,
+                "title": item.findtext("title") or "(untitled)",
+                "published": item.findtext("pubDate") or "",
+                "audio_url": audio_url,
+                "page_url": item.findtext("link") or "",
+                "description": item.findtext("description") or "",
+                "channel": channel_title,
+            })
+        else:                    # Atom fields
+            episodes.append({
+                "id": item.findtext(f"{ATOM}id") or audio_url,
+                "title": item.findtext(f"{ATOM}title") or "(untitled)",
+                "published": item.findtext(f"{ATOM}published")
+                             or item.findtext(f"{ATOM}updated") or "",
+                "audio_url": audio_url,
+                "page_url": _atom_link(item),
+                "description": item.findtext(f"{ATOM}summary") or "",
+                "channel": channel_title,
+            })
     return episodes
+
+
+def _enclosure_url(item: ET.Element) -> str | None:
+    """Find an audio enclosure URL in an RSS <item> or Atom <entry>."""
+    # RSS 2.0 <enclosure url="..." type="audio/...">
+    encs = item.findall("enclosure")
+    audio = [e for e in encs if str(e.get("type", "")).startswith("audio")]
+    for e in (audio or encs):
+        if e.get("url"):
+            return e.get("url")
+    # Atom <link rel="enclosure" href="..." type="audio/...">
+    for link in item.findall(f"{ATOM}link"):
+        if link.get("rel") == "enclosure" and link.get("href"):
+            return link.get("href")
+    return None
+
+
+def _atom_link(entry: ET.Element) -> str:
+    for link in entry.findall(f"{ATOM}link"):
+        if link.get("rel") in (None, "alternate") and link.get("href"):
+            return link.get("href")
+    return ""
 
 
 def _feed_title(feed_url: str) -> str | None:
     try:
-        import feedparser
-        parsed = feedparser.parse(
-            requests.get(feed_url, headers=HEADERS, timeout=TIMEOUT).content
-        )
-        return parsed.feed.get("title")
+        raw = requests.get(feed_url, headers=HEADERS, timeout=TIMEOUT).content
+        root = ET.fromstring(raw)
+        channel = root.find("channel")
+        if channel is not None:
+            return channel.findtext("title")
+        return root.findtext(f"{ATOM}title")
     except Exception:
         return None
 
