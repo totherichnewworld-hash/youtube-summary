@@ -9,6 +9,10 @@ on:
         description: "On first run, summarize the N newest items per feed"
         required: false
         default: "0"
+      max_tokens:
+        description: "Summary length (output token budget). Bigger = longer. Leave blank to use the repo default."
+        required: false
+        default: ""
 
 concurrency:
   group: summarize
@@ -36,6 +40,10 @@ jobs:
           # Summarization backend: 'anthropic' (default) or 'openai'
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'anthropic' }}
           SUMMARY_MODEL: ${{ vars.SUMMARY_MODEL }}
+          # Summary length. A manual run's box wins; otherwise the repo Variable;
+          # otherwise the code default (4096). Set vars.SUMMARY_MAX_TOKENS once
+          # in Settings -> Secrets and variables -> Actions -> Variables.
+          SUMMARY_MAX_TOKENS: ${{ github.event.inputs.max_tokens || vars.SUMMARY_MAX_TOKENS }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # For LLM_PROVIDER=openai (OpenAI, a gateway, or a hosted local model)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

@@ -39,7 +39,13 @@ DEFAULT_PROMPT_FILE = os.environ.get("YT_PROMPT_FILE", "prompt.txt")
 DEFAULT_STATE_FILE = os.environ.get("YT_STATE_FILE", "state.json")
 DEFAULT_OUTPUT_DIR = os.environ.get("YT_OUTPUT_DIR", "summaries")
 DEFAULT_LANGUAGES = os.environ.get("YT_LANGUAGES", "en,zh-Hans,zh-Hant,zh").split(",")
-DEFAULT_MAX_TOKENS = int(os.environ.get("YT_MAX_TOKENS", "4096"))
+# Summary length cap (output token budget). Friendly name SUMMARY_MAX_TOKENS,
+# with YT_MAX_TOKENS kept as a fallback for older configs.
+DEFAULT_MAX_TOKENS = int(
+    os.environ.get("SUMMARY_MAX_TOKENS")
+    or os.environ.get("YT_MAX_TOKENS")
+    or "4096"
+)
 # Rough safety cap: Chinese ~1 char/token, English ~4 chars/token.
 # 16 000 chars keeps the transcript well under 12 000 tokens on Groq free tier.
 DEFAULT_MAX_TRANSCRIPT_CHARS = int(os.environ.get("YT_MAX_TRANSCRIPT_CHARS", "16000"))
