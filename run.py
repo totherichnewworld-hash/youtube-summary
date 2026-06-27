@@ -208,11 +208,14 @@ def main() -> int:
         print(f"{sub_path} not found; falling back to subscriptions.example.yaml",
               file=sys.stderr)
         sub_path = "subscriptions.example.yaml"
-    links = feeds.load_subscriptions(sub_path)
-    print(f"{len(links)} subscription(s).", file=sys.stderr)
+    subs = feeds.load_subscriptions(sub_path)
+    print(f"{len(subs)} subscription(s).", file=sys.stderr)
 
     exit_code = 0
-    for link in links:
+    for sub in subs:
+        link = sub["url"]
+        # Per-subscription prompt overrides the shared default prompt.txt.
+        sub_prompt = sub.get("prompt") or prompt_template
         try:
             feed = feeds.resolve(link)
         except Exception as e:
@@ -266,7 +269,7 @@ def main() -> int:
             if args.summary:
                 try:
                     summary = summarize.summarize(
-                        item, transcript, prompt_template, args.model,
+                        item, transcript, sub_prompt, args.model,
                         args.max_tokens, args.max_transcript_chars,
                     )
                 except Exception as e:

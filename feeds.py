@@ -258,25 +258,72 @@ def resolve(link: str) -> dict:
     return _RESOLVERS[classify(link)](link)
 
 
-def load_subscriptions(path: str) -> list[str]:
+def load_subscriptions(path: str) -> list[dict]:
+    """Load subscriptions, each as {"url": str, "prompt": str | None}.
+
+    Two entry forms are accepted and may be mixed in the same list:
+
+        subscriptions:
+          - https://www.youtube.com/@handle          # simple: default prompt
+
+          - url: https://www.youtube.com/@other       # custom inline prompt
+            prompt: |
+              请聚焦事实而非观点，聚焦投资而非政治。
+
+          - url: https://feeds.example.com/show.xml   # custom prompt from a file
+            prompt_file: prompts/investing.txt
+
+    A relative prompt_file is looked up in the current directory first, then
+    next to the subscriptions file. `prompt` is None when no custom prompt is
+    set, so the caller falls back to the default prompt.txt.
+    """
+    from pathlib import Path
     import yaml
+
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     subs = data.get("subscriptions", [])
     if not isinstance(subs, list):
-        raise ValueError("`subscriptions` must be a list of links")
-    return [str(s).strip() for s in subs if str(s).strip()]
+        raise ValueError("`subscriptions` must be a list")
+
+    base = Path(path).resolve().parent
+    result: list[dict] = []
+    for entry in subs:
+        if isinstance(entry, str):
+            url = entry.strip()
+            if url:
+                result.append({"url": url, "prompt": None})
+            continue
+        if isinstance(entry, dict):
+            url = str(entry.get("url") or entry.get("link") or "").strip()
+            if not url:
+                raise ValueError(f"subscription entry is missing a url: {entry!r}")
+            prompt = entry.get("prompt")
+            if prompt is not None:
+                prompt = str(prompt)
+            elif entry.get("prompt_file"):
+                pf = Path(entry["prompt_file"])
+                if not pf.is_absolute() and not pf.exists():
+                    pf = base / pf
+                prompt = pf.read_text(encoding="utf-8")
+            result.append({"url": url, "prompt": prompt})
+            continue
+        raise ValueError(f"subscription entry must be a link or a mapping: {entry!r}")
+    return result
 
 
 def main() -> int:
     """Resolve every link in subscriptions.yaml and print the normalized feeds."""
     path = sys.argv[1] if len(sys.argv) > 1 else "subscriptions.yaml"
     ok = True
-    for link in load_subscriptions(path):
+    for sub in load_subscriptions(path):
+        link = sub["url"]
         try:
             feed = resolve(link)
             note = f"  ({feed['note']})" if feed.get("note") else ""
-            print(f"[{feed['kind']:7}] {feed['title']}\n          {feed['feed_url']}{note}")
+            tag = "  [custom prompt]" if sub.get("prompt") else ""
+            print(f"[{feed['kind']:7}] {feed['title']}{tag}\n"
+                  f"          {feed['feed_url']}{note}")
         except Exception as e:
             ok = False
             print(f"[ERROR  ] {link}\n          {e}", file=sys.stderr)

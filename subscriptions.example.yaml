@@ -1,14 +1,30 @@
 # Your subscriptions. Paste links — the resolver figures out the rest.
-# Copy this to `subscriptions.yaml` and edit. Supported per line:
+# Copy this to `subscriptions.yaml` and edit. Each entry can be:
+#
 #   - YouTube channel:   https://www.youtube.com/@handle   (or a UC... id)
 #   - Apple Podcasts:    https://podcasts.apple.com/us/podcast/name/id123456789
 #   - Spotify show:      https://open.spotify.com/show/XXXXXXXXXXXXXXXXXXXXXX
 #   - Raw RSS feed:      https://feeds.example.com/show.xml
 #
+# A plain link uses the shared default prompt (prompt.txt). To give one
+# subscription its OWN summary instructions, use the mapping form with either
+# an inline `prompt:` or a `prompt_file:` pointing at a text file.
+#
 # Validate with:  python feeds.py subscriptions.yaml
 
 subscriptions:
+  # Simple form — uses the default prompt.txt
   - https://www.youtube.com/@ltshijie
+
+  # Custom inline prompt for just this channel
+  # - url: https://www.youtube.com/@someinvestingchannel
+  #   prompt: |
+  #     请用中文总结，聚焦事实而非观点，聚焦投资与市场而非政治。
+  #     列出提到的具体公司、数字、价格与预测。
+
+  # Custom prompt loaded from a file (keep long prompts tidy)
+  # - url: https://feeds.simplecast.com/54nAGcIl
+  #   prompt_file: prompts/investing.txt
+
   # - https://podcasts.apple.com/us/podcast/the-daily/id1200361736
   # - https://open.spotify.com/show/3IM0lmZxpFAY7CwMuv9H4g
-  # - https://feeds.simplecast.com/54nAGcIl

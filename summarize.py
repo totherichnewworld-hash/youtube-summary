@@ -219,13 +219,20 @@ def summarize(meta: dict, transcript: str, prompt_template: str,
     if len(transcript) > max_transcript_chars:
         transcript = transcript[:max_transcript_chars] + "\n\n[transcript truncated]"
 
-    instructions = prompt_template.format(
-        title=meta["title"],
-        channel=meta["channel"],
-        published=meta["published"],
-        url=meta["url"],
+    # Substitute placeholders without str.format so free-form custom prompts
+    # (which may contain stray { } characters) never crash.
+    instructions = prompt_template
+    for key in ("title", "channel", "published", "url"):
+        instructions = instructions.replace("{" + key + "}", str(meta.get(key, "")))
+    # Ensure the model always sees the basic context even if a custom prompt
+    # didn't include any placeholders.
+    header = (
+        f"Title: {meta.get('title', '')}\n"
+        f"Channel: {meta.get('channel', '')}\n"
+        f"Published: {meta.get('published', '')}\n"
+        f"URL: {meta.get('url', '')}"
     )
-    user_content = f"{instructions}\n\n---\nTranscript:\n{transcript}"
+    user_content = f"{header}\n\n{instructions}\n\n---\nTranscript:\n{transcript}"
     system = (
         "You write clear, accurate summaries of video and podcast transcripts. "
         "Stay faithful to the source and never invent details."

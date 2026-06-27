@@ -1,10 +1,3 @@
-You are summarizing a YouTube video.
-
-Title: {title}
-Channel: {channel}
-Published: {published}
-URL: {url}
-
 请用中文撰写一份清晰、条理分明的摘要，涵盖以下内容（无论原文是什么语言，摘要一律用中文）：
 
 1. **一句话总结** — 用 2-3 句话概括核心信息。
