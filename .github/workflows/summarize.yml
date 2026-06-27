@@ -47,6 +47,11 @@ jobs:
           # Save full transcripts to transcripts/ (committed below). Set the repo
           # Variable SAVE_TRANSCRIPTS to 'false' to turn this off.
           SAVE_TRANSCRIPTS: ${{ vars.SAVE_TRANSCRIPTS || 'true' }}
+          # Write a summary? Set MAKE_SUMMARY=false for transcript-only.
+          MAKE_SUMMARY: ${{ vars.MAKE_SUMMARY || 'true' }}
+          # Clean up the transcript for readability with the LLM (uses more
+          # tokens). Set CORRECT_TRANSCRIPT=true to turn on.
+          CORRECT_TRANSCRIPT: ${{ vars.CORRECT_TRANSCRIPT || 'false' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # For LLM_PROVIDER=openai (OpenAI, a gateway, or a hosted local model)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

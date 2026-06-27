@@ -49,6 +49,10 @@ DEFAULT_MAX_TOKENS = int(
 # Rough safety cap: Chinese ~1 char/token, English ~4 chars/token.
 # 16 000 chars keeps the transcript well under 12 000 tokens on Groq free tier.
 DEFAULT_MAX_TRANSCRIPT_CHARS = int(os.environ.get("YT_MAX_TRANSCRIPT_CHARS", "16000"))
+# Transcript cleanup is done chunk-by-chunk so each call stays small enough for
+# small free-tier rate limits. Small chunks ~= small output, no truncation.
+DEFAULT_CORRECTION_CHUNK_CHARS = int(os.environ.get("YT_CORRECTION_CHUNK_CHARS", "2500"))
+DEFAULT_CORRECTION_MAX_TOKENS = int(os.environ.get("YT_CORRECTION_MAX_TOKENS", "4096"))
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 YT_NS = "{http://www.youtube.com/xml/schemas/2015}"
@@ -230,6 +234,43 @@ def summarize(meta: dict, transcript: str, prompt_template: str,
     return llm.complete(system, user_content, model=model, max_tokens=max_tokens)
 
 
+CORRECTION_SYSTEM = (
+    "You clean up raw, auto-generated transcripts for readability. "
+    "Add correct punctuation, capitalization, and paragraph breaks; fix obvious "
+    "transcription mistakes; and remove filler and accidental repetitions. "
+    "Keep the SAME language as the input. Do NOT translate, summarize, omit, or "
+    "add any content — preserve every point and all the meaning. "
+    "Output only the cleaned transcript, nothing else."
+)
+
+
+def correct_transcript(transcript: str, model: str | None = None,
+                       max_tokens: int = DEFAULT_CORRECTION_MAX_TOKENS,
+                       chunk_chars: int = DEFAULT_CORRECTION_CHUNK_CHARS) -> str:
+    """Rewrite a raw transcript into readable prose, chunk by chunk.
+
+    The text is split into small chunks so each LLM call stays well under
+    free-tier token/rate limits and the output is never truncated. Content is
+    preserved — this only improves punctuation, paragraphs, and obvious errors.
+    """
+    import llm
+
+    text = transcript.strip()
+    if not text:
+        return text
+    chunks = [text[i:i + chunk_chars] for i in range(0, len(text), chunk_chars)]
+    cleaned_parts = []
+    for chunk in chunks:
+        cleaned = llm.complete(
+            CORRECTION_SYSTEM,
+            f"Clean up this transcript segment:\n\n{chunk}",
+            model=model, max_tokens=max_tokens,
+        )
+        if cleaned.strip():
+            cleaned_parts.append(cleaned.strip())
+    return "\n\n".join(cleaned_parts)
+
+
 # ---------------------------------------------------------------------------
 # State + output
 # ---------------------------------------------------------------------------
@@ -277,6 +318,32 @@ def write_transcript(output_dir: Path, meta: dict, transcript: str) -> Path:
         f"{'=' * 60}\n\n"
     )
     path.write_text(header + transcript.strip() + "\n", encoding="utf-8")
+    return path
+
+
+def write_document(output_dir: Path, meta: dict, summary: str | None,
+                   transcript: str) -> Path:
+    """Write the readable .md: optional summary section + the full transcript.
+
+    This is the single page you open per item — summary first (if one was made),
+    then the complete transcript below it.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"{_safe_filename(meta)}.md"
+    parts = [
+        f"# {meta['title']}",
+        "",
+        f"- **Channel:** {meta['channel']}",
+        f"- **Published:** {meta['published']}",
+        f"- **URL:** {meta['url']}",
+        f"- **Generated:** {datetime.now(timezone.utc).isoformat()}",
+        "",
+    ]
+    if summary and summary.strip():
+        parts += ["---", "", "## 摘要 Summary", "", summary.strip(), ""]
+    if transcript and transcript.strip():
+        parts += ["---", "", "## 全文 Transcript", "", transcript.strip(), ""]
+    path.write_text("\n".join(parts) + "\n", encoding="utf-8")
     return path
 
 

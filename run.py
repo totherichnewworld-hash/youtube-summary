@@ -80,13 +80,14 @@ def get_transcript(item: dict, languages: list[str]) -> str:
     return transcribe.transcribe(item["audio_url"])
 
 
-def deliver(item: dict, summary: str, transcript: str, output_dir: Path,
+def deliver(item: dict, summary: str | None, transcript: str, output_dir: Path,
             transcript_dir: Path | None) -> None:
     meta = {
         "title": item["title"], "channel": item["channel"],
         "published": item["published"], "video_id": item["id"], "url": item["url"],
     }
-    path = summarize.write_summary(output_dir, meta, summary)
+    # One readable page: summary (if made) + the full transcript.
+    path = summarize.write_document(output_dir, meta, summary, transcript)
     print(f"  -> saved {path}", file=sys.stderr)
 
     if transcript_dir is not None and transcript:
@@ -94,13 +95,15 @@ def deliver(item: dict, summary: str, transcript: str, output_dir: Path,
         print(f"  -> saved transcript {tpath}", file=sys.stderr)
 
     # Push channels are independent; each fires only if it's configured. The
-    # summary is always saved to a file above (read it on GitHub), so no
-    # channel needs to be set up for the pipeline to be useful.
+    # document is always saved above (read it on GitHub), so no channel needs to
+    # be set up. A full transcript is too long to push, so when there's no
+    # summary we push a short heads-up with the link instead.
     subject = f"[{item['channel']}] {item['title']}"
-    body = (
-        f"{item['title']}\n{item['channel']} — {item['published']}\n"
-        f"{item['url']}\n\n{summary}\n"
-    )
+    head = f"{item['title']}\n{item['channel']} — {item['published']}\n{item['url']}"
+    if summary and summary.strip():
+        body = f"{head}\n\n{summary}\n"
+    else:
+        body = f"{head}\n\n（全文已保存，未生成摘要 — full transcript saved.)\n"
     pushed = False
     if notify.email_configured():
         notify.send_email(subject, body)
@@ -110,7 +113,7 @@ def deliver(item: dict, summary: str, transcript: str, output_dir: Path,
         notify.send_discord(subject, body)
         print("  -> posted to Discord", file=sys.stderr)
         pushed = True
-    if not pushed:
+    if not pushed and summary and summary.strip():
         print(f"\n{summary}\n", file=sys.stdout)
 
 
@@ -171,6 +174,14 @@ def main() -> int:
                    default=_env_flag("SAVE_TRANSCRIPTS", True),
                    help="Save the full transcript next to each summary "
                         "(env: SAVE_TRANSCRIPTS; default: on)")
+    p.add_argument("--summary", action=argparse.BooleanOptionalAction,
+                   default=_env_flag("MAKE_SUMMARY", True),
+                   help="Write a summary (env: MAKE_SUMMARY; default: on). "
+                        "Use --no-summary for transcript-only.")
+    p.add_argument("--correct-transcript", action=argparse.BooleanOptionalAction,
+                   default=_env_flag("CORRECT_TRANSCRIPT", False),
+                   help="Clean up the transcript for readability with the LLM "
+                        "(env: CORRECT_TRANSCRIPT; default: off — uses more tokens).")
     p.add_argument("--model", default=None, help="Override model (else provider default)")
     p.add_argument("--max-tokens", type=int, default=summarize.DEFAULT_MAX_TOKENS)
     p.add_argument("--max-transcript-chars", type=int,
@@ -238,15 +249,31 @@ def main() -> int:
                 seen.add(item["id"])  # don't retry items that will never transcribe
                 exit_code = 1
                 continue
-            try:
-                summary = summarize.summarize(
-                    item, transcript, prompt_template, args.model, args.max_tokens,
-                    args.max_transcript_chars,
-                )
-            except Exception as e:
-                print(f"    ! summarize failed (retry next run): {e}", file=sys.stderr)
-                exit_code = 1
-                continue  # leave unseen so it's retried
+
+            # Optional: clean up the transcript for readability. On failure,
+            # fall back to the raw transcript rather than losing the item.
+            if args.correct_transcript:
+                try:
+                    transcript = summarize.correct_transcript(
+                        transcript, args.model)
+                    print("    -> transcript cleaned up", file=sys.stderr)
+                except Exception as e:
+                    print(f"    ! cleanup failed, using raw transcript: {e}",
+                          file=sys.stderr)
+                    exit_code = 1
+
+            summary = None
+            if args.summary:
+                try:
+                    summary = summarize.summarize(
+                        item, transcript, prompt_template, args.model,
+                        args.max_tokens, args.max_transcript_chars,
+                    )
+                except Exception as e:
+                    print(f"    ! summarize failed (retry next run): {e}",
+                          file=sys.stderr)
+                    exit_code = 1
+                    continue  # leave unseen so it's retried
 
             deliver(item, summary, transcript, output_dir, transcript_dir)
             seen.add(item["id"])
