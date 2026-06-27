@@ -153,10 +153,14 @@ def main() -> int:
 
         new_items = [it for it in items if it["id"] not in seen]
         if first_run:
-            # Seed: mark everything seen; summarize only the N newest if asked.
-            for it in items:
-                seen.add(it["id"])
+            # Seed the backlog as seen, but leave the N newest we're about to
+            # summarize unseen so a failed summary is retried next run (they get
+            # marked seen only after successful delivery below).
             new_items = items[: args.initial] if args.initial > 0 else []
+            to_summarize = {it["id"] for it in new_items}
+            for it in items:
+                if it["id"] not in to_summarize:
+                    seen.add(it["id"])
 
         # Process oldest-first so summaries arrive in chronological order.
         for item in reversed(new_items):
