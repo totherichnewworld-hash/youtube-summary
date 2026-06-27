@@ -9,6 +9,15 @@ on:
         description: "Summarize the N newest PAST videos per channel now (e.g. 5). Use this to catch up on the backlog."
         required: false
         default: "0"
+      all_history:
+        description: "Summarize EVERY past video of each channel (the full backlog, via yt-dlp). Combine with 'max_per_run'."
+        type: boolean
+        required: false
+        default: false
+      max_per_run:
+        description: "Cap items processed per run (e.g. 10) so a big backlog spreads across runs. 0 = no limit."
+        required: false
+        default: "0"
       initial:
         description: "On first run only, summarize the N newest items per feed"
         required: false
@@ -73,10 +82,13 @@ jobs:
           MAIL_TO: ${{ secrets.MAIL_TO }}
           # Discord delivery (webhook URL) — optional
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # --all-history flag is added below only when the input is true.
+          ALL_HISTORY: ${{ github.event.inputs.all_history || 'false' }}
         run: >
           python run.py
           --initial "${{ github.event.inputs.initial || '0' }}"
           --backfill "${{ github.event.inputs.backfill || '0' }}"
+          --max-per-run "${{ github.event.inputs.max_per_run || '0' }}"
 
       - name: Persist state
         if: always()

@@ -42,12 +42,21 @@ def save_state(path: Path, state: dict) -> None:
     path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def collect_items(feed: dict, limit: int) -> list[dict]:
-    """Return a feed's recent items as uniform dicts (newest first)."""
+def collect_items(feed: dict, limit: int, all_history: bool = False) -> list[dict]:
+    """Return a feed's items as uniform dicts (newest first).
+
+    With all_history=True, YouTube channels are enumerated in full (every
+    upload, via yt-dlp) instead of just the ~15 in the RSS feed, and podcast
+    feeds are read without a small cap.
+    """
     if feed["kind"] == "youtube":
         items = []
         channel_id = feed["feed_url"].split("channel_id=")[-1]
-        for v in summarize.fetch_feed(channel_id)[:limit]:
+        if all_history:
+            videos = summarize.enumerate_channel_videos(channel_id)
+        else:
+            videos = summarize.fetch_feed(channel_id)[:limit]
+        for v in videos:
             items.append({
                 "kind": "youtube",
                 "id": v["video_id"],
@@ -60,7 +69,8 @@ def collect_items(feed: dict, limit: int) -> list[dict]:
         return items
 
     items = []
-    for ep in feeds.parse_podcast_feed(feed["feed_url"], limit=limit):
+    podcast_limit = 1000 if all_history else limit
+    for ep in feeds.parse_podcast_feed(feed["feed_url"], limit=podcast_limit):
         items.append({
             "kind": "podcast",
             "id": ep["id"],
@@ -198,6 +208,14 @@ def main() -> int:
                         "if already seen/initialized (for catching up on past "
                         "videos). Reachable items are limited to what the feed "
                         "still lists (~15 newest for YouTube).")
+    p.add_argument("--all-history", action="store_true",
+                   default=_env_flag("ALL_HISTORY", False),
+                   help="Reach EVERY past video of each YouTube channel (via "
+                        "yt-dlp), not just the RSS feed. Combine with "
+                        "--max-per-run to chip away at a big backlog across runs.")
+    p.add_argument("--max-per-run", type=int, default=0, metavar="N",
+                   help="Process at most N items this run (oldest first); the "
+                        "rest are picked up on later runs. 0 = no limit.")
     args = p.parse_args()
 
     state_path = Path(args.state_file)
@@ -232,14 +250,14 @@ def main() -> int:
         # Scan enough items to satisfy a backfill/initial request.
         scan_limit = max(args.limit, args.initial, args.backfill)
         try:
-            items = collect_items(feed, scan_limit)
+            items = collect_items(feed, scan_limit, all_history=args.all_history)
         except Exception as e:
             print(f"  ! Could not read feed: {e}", file=sys.stderr)
             exit_code = 1
             continue
 
         new_items = [it for it in items if it["id"] not in seen]
-        if first_run:
+        if first_run and not args.all_history:
             # Seed the backlog as seen, but leave the N newest we're about to
             # summarize unseen so a failed summary is retried next run (they get
             # marked seen only after successful delivery below).
@@ -248,13 +266,20 @@ def main() -> int:
             for it in items:
                 if it["id"] not in to_summarize:
                     seen.add(it["id"])
+        # With --all-history we do NOT seed; every not-yet-done video stays a
+        # candidate so the whole backlog gets summarized over time.
         if args.backfill > 0:
             # Explicit catch-up: summarize the N newest items regardless of
             # whether they've been seen. Wins over the new/first-run selection.
             new_items = items[: args.backfill]
 
         # Process oldest-first so summaries arrive in chronological order.
-        for item in reversed(new_items):
+        to_process = list(reversed(new_items))
+        if args.max_per_run > 0 and len(to_process) > args.max_per_run:
+            print(f"  ({len(to_process)} pending; doing {args.max_per_run} this "
+                  f"run, the rest next time)", file=sys.stderr)
+            to_process = to_process[: args.max_per_run]
+        for item in to_process:
             print(f"  • {item['title']}", file=sys.stderr)
             try:
                 transcript = get_transcript(item, args.languages)
@@ -302,7 +327,7 @@ def main() -> int:
     if output_dir.exists() and any(output_dir.glob("*.md")):
         build_index(output_dir, Path(args.index_file))
 
-    if first_run and args.initial == 0:
+    if first_run and args.initial == 0 and not args.all_history:
         print("First run: seeded state; new items from now on will be summarized.",
               file=sys.stderr)
     return exit_code

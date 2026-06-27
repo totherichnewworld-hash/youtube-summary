@@ -4,3 +4,5 @@ requests>=2.31
 PyYAML>=6.0
 # Only needed when LLM_PROVIDER=openai (OpenAI, gateways, or local models).
 openai>=1.0
+# Only needed for --all-history (enumerate a channel's full upload backlog).
+yt-dlp>=2024.0.0

@@ -169,6 +169,48 @@ def fetch_feed(channel_id: str) -> list[dict]:
     return videos
 
 
+def enumerate_channel_videos(channel_id: str, limit: int | None = None) -> list[dict]:
+    """List a channel's ENTIRE upload history (newest first), not just the RSS
+    feed's ~15. Uses yt-dlp's flat extraction (no API key, no downloads).
+
+    Returns the same dict shape as fetch_feed(); `published` may be empty since
+    flat listing doesn't always include dates.
+    """
+    try:
+        from yt_dlp import YoutubeDL
+    except ImportError as e:  # pragma: no cover - depends on environment
+        raise RuntimeError(
+            "Listing a channel's full history needs yt-dlp. "
+            "Install it with: pip install yt-dlp"
+        ) from e
+
+    url = f"https://www.youtube.com/channel/{channel_id}/videos"
+    opts = {"extract_flat": True, "skip_download": True, "quiet": True,
+            "ignoreerrors": True}
+    if limit:
+        opts["playlistend"] = int(limit)
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False) or {}
+
+    channel_name = info.get("channel") or info.get("uploader") or info.get("title") \
+        or channel_id
+    videos = []
+    for entry in info.get("entries") or []:
+        if not entry:
+            continue
+        video_id = entry.get("id")
+        if not video_id:
+            continue
+        videos.append({
+            "video_id": video_id,
+            "title": entry.get("title") or video_id,
+            "published": entry.get("upload_date") or "",
+            "channel": entry.get("channel") or channel_name,
+            "url": entry.get("url") or f"https://www.youtube.com/watch?v={video_id}",
+        })
+    return videos
+
+
 # ---------------------------------------------------------------------------
 # Transcript fetching
 # ---------------------------------------------------------------------------
