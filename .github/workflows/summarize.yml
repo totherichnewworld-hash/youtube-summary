@@ -5,8 +5,12 @@ on:
     - cron: "0 */6 * * *"   # every 6 hours (UTC); adjust as you like
   workflow_dispatch:         # lets you run it manually from the Actions tab
     inputs:
+      backfill:
+        description: "Summarize the N newest PAST videos per channel now (e.g. 5). Use this to catch up on the backlog."
+        required: false
+        default: "0"
       initial:
-        description: "On first run, summarize the N newest items per feed"
+        description: "On first run only, summarize the N newest items per feed"
         required: false
         default: "0"
       max_tokens:
@@ -69,7 +73,10 @@ jobs:
           MAIL_TO: ${{ secrets.MAIL_TO }}
           # Discord delivery (webhook URL) — optional
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python run.py --initial "${{ github.event.inputs.initial || '0' }}"
+        run: >
+          python run.py
+          --initial "${{ github.event.inputs.initial || '0' }}"
+          --backfill "${{ github.event.inputs.backfill || '0' }}"
 
       - name: Persist state
         if: always()

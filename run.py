@@ -193,6 +193,11 @@ def main() -> int:
                    help="Max recent items to inspect per feed")
     p.add_argument("--initial", type=int, default=0, metavar="N",
                    help="On first run, summarize the N newest items per feed")
+    p.add_argument("--backfill", type=int, default=0, metavar="N",
+                   help="Summarize the N newest items per feed right now, even "
+                        "if already seen/initialized (for catching up on past "
+                        "videos). Reachable items are limited to what the feed "
+                        "still lists (~15 newest for YouTube).")
     args = p.parse_args()
 
     state_path = Path(args.state_file)
@@ -224,8 +229,10 @@ def main() -> int:
             continue
 
         print(f"\n# {feed['title']} ({feed['kind']})", file=sys.stderr)
+        # Scan enough items to satisfy a backfill/initial request.
+        scan_limit = max(args.limit, args.initial, args.backfill)
         try:
-            items = collect_items(feed, args.limit)
+            items = collect_items(feed, scan_limit)
         except Exception as e:
             print(f"  ! Could not read feed: {e}", file=sys.stderr)
             exit_code = 1
@@ -241,6 +248,10 @@ def main() -> int:
             for it in items:
                 if it["id"] not in to_summarize:
                     seen.add(it["id"])
+        if args.backfill > 0:
+            # Explicit catch-up: summarize the N newest items regardless of
+            # whether they've been seen. Wins over the new/first-run selection.
+            new_items = items[: args.backfill]
 
         # Process oldest-first so summaries arrive in chronological order.
         for item in reversed(new_items):
