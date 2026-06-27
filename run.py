@@ -108,6 +108,9 @@ def main() -> int:
     p.add_argument("--output-dir", default="summaries")
     p.add_argument("--model", default=None, help="Override model (else provider default)")
     p.add_argument("--max-tokens", type=int, default=summarize.DEFAULT_MAX_TOKENS)
+    p.add_argument("--max-transcript-chars", type=int,
+                   default=summarize.DEFAULT_MAX_TRANSCRIPT_CHARS,
+                   help="Truncate transcripts to this many chars before summarizing")
     p.add_argument("--languages", type=lambda s: s.split(","),
                    default=summarize.DEFAULT_LANGUAGES)
     p.add_argument("--limit", type=int, default=10,
@@ -167,7 +170,8 @@ def main() -> int:
                 continue
             try:
                 summary = summarize.summarize(
-                    item, transcript, prompt_template, args.model, args.max_tokens
+                    item, transcript, prompt_template, args.model, args.max_tokens,
+                    args.max_transcript_chars,
                 )
             except Exception as e:
                 print(f"    ! summarize failed (retry next run): {e}", file=sys.stderr)

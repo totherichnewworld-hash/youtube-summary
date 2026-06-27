@@ -40,6 +40,9 @@ DEFAULT_STATE_FILE = os.environ.get("YT_STATE_FILE", "state.json")
 DEFAULT_OUTPUT_DIR = os.environ.get("YT_OUTPUT_DIR", "summaries")
 DEFAULT_LANGUAGES = os.environ.get("YT_LANGUAGES", "en,zh-Hans,zh-Hant,zh").split(",")
 DEFAULT_MAX_TOKENS = int(os.environ.get("YT_MAX_TOKENS", "4096"))
+# Rough safety cap: Chinese ~1 char/token, English ~4 chars/token.
+# 16 000 chars keeps the transcript well under 12 000 tokens on Groq free tier.
+DEFAULT_MAX_TRANSCRIPT_CHARS = int(os.environ.get("YT_MAX_TRANSCRIPT_CHARS", "16000"))
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 YT_NS = "{http://www.youtube.com/xml/schemas/2015}"
@@ -199,8 +202,12 @@ def fetch_transcript(video_id: str, languages: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 def summarize(meta: dict, transcript: str, prompt_template: str,
-              model: str | None = None, max_tokens: int = DEFAULT_MAX_TOKENS) -> str:
+              model: str | None = None, max_tokens: int = DEFAULT_MAX_TOKENS,
+              max_transcript_chars: int = DEFAULT_MAX_TRANSCRIPT_CHARS) -> str:
     import llm
+
+    if len(transcript) > max_transcript_chars:
+        transcript = transcript[:max_transcript_chars] + "\n\n[transcript truncated]"
 
     instructions = prompt_template.format(
         title=meta["title"],
