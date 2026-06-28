@@ -75,6 +75,13 @@ jobs:
           TRANSCRIBE_LANGUAGE: ${{ vars.TRANSCRIBE_LANGUAGE }}
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
+          # Proxy for YouTube (optional) — lets the cloud runner reach YouTube,
+          # which blocks datacenter IPs. Use a RESIDENTIAL proxy; datacenter/free
+          # ones are blocked too. Webshare is what youtube-transcript-api
+          # recommends; or set YT_PROXY to a generic http://user:pass@host:port.
+          WEBSHARE_PROXY_USERNAME: ${{ secrets.WEBSHARE_PROXY_USERNAME }}
+          WEBSHARE_PROXY_PASSWORD: ${{ secrets.WEBSHARE_PROXY_PASSWORD }}
+          YT_PROXY: ${{ secrets.YT_PROXY }}
           # Email delivery (SMTP) — optional
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}

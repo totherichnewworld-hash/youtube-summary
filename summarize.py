@@ -189,6 +189,9 @@ def enumerate_channel_videos(channel_id: str, limit: int | None = None) -> list[
     url = f"https://www.youtube.com/channel/{channel_id}/videos"
     opts = {"extract_flat": True, "skip_download": True, "quiet": True,
             "ignoreerrors": True}
+    proxy = _proxy_url()
+    if proxy:
+        opts["proxy"] = proxy
     if limit:
         opts["playlistend"] = int(limit)
     with YoutubeDL(opts) as ydl:
@@ -232,6 +235,33 @@ def fetch_transcript(video_id: str, languages: list[str]) -> str:
         raise api_err  # surface the original, more descriptive error
 
 
+def _proxy_url() -> str | None:
+    """A generic proxy URL to route YouTube requests through, from env."""
+    return (os.environ.get("YT_PROXY") or os.environ.get("HTTPS_PROXY")
+            or os.environ.get("HTTP_PROXY"))
+
+
+def _yt_proxy_config():
+    """Build a youtube-transcript-api proxy config from env, or None.
+
+    Prefers Webshare (the residential proxies the library recommends for
+    getting past YouTube IP bans); otherwise a generic proxy URL.
+    """
+    try:
+        from youtube_transcript_api.proxies import (
+            GenericProxyConfig, WebshareProxyConfig)
+    except Exception:
+        return None
+    user = os.environ.get("WEBSHARE_PROXY_USERNAME")
+    pw = os.environ.get("WEBSHARE_PROXY_PASSWORD")
+    if user and pw:
+        return WebshareProxyConfig(proxy_username=user, proxy_password=pw)
+    url = _proxy_url()
+    if url:
+        return GenericProxyConfig(http_url=url, https_url=url)
+    return None
+
+
 def _fetch_transcript_api(video_id: str, languages: list[str]) -> str:
     from youtube_transcript_api import YouTubeTranscriptApi
 
@@ -244,8 +274,14 @@ def _fetch_transcript_api(video_id: str, languages: list[str]) -> str:
         return "\n".join(parts).strip()
 
     # Newer youtube-transcript-api (>=1.0) uses an instance .fetch() API;
-    # older versions expose static .get_transcript(). Support both.
-    api = YouTubeTranscriptApi()
+    # older versions expose static .get_transcript(). Support both. Route
+    # through a proxy when configured (lets cloud runners reach YouTube).
+    proxy_config = _yt_proxy_config()
+    try:
+        api = YouTubeTranscriptApi(proxy_config=proxy_config) if proxy_config \
+            else YouTubeTranscriptApi()
+    except TypeError:
+        api = YouTubeTranscriptApi()  # older version without proxy_config
 
     if hasattr(api, "fetch"):
         try:
@@ -274,12 +310,16 @@ def _fetch_transcript_ytdlp(video_id: str, languages: list[str]) -> str:
     url = f"https://www.youtube.com/watch?v={video_id}"
     opts = {"skip_download": True, "writesubtitles": True,
             "writeautomaticsub": True, "quiet": True, "ignoreerrors": True}
+    proxy = _proxy_url()
+    if proxy:
+        opts["proxy"] = proxy
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False) or {}
 
     subs = {**(info.get("subtitles") or {}), **(info.get("automatic_captions") or {})}
     if not subs:
         return ""
+    proxies = {"http": proxy, "https": proxy} if proxy else None
     # Pick the best language: a requested one, else the first available.
     order = list(languages) + [code for code in subs if code not in languages]
     for code in order:
@@ -290,7 +330,7 @@ def _fetch_transcript_ytdlp(video_id: str, languages: list[str]) -> str:
         if not track.get("url"):
             continue
         body = requests.get(track["url"], headers={"User-Agent": USER_AGENT},
-                            timeout=30).text
+                            timeout=30, proxies=proxies).text
         text = transcribe._parse_vtt_srt(body)
         if text.strip():
             return text
