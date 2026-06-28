@@ -232,7 +232,10 @@ def main() -> int:
     prompt_template = Path(args.prompt_file).read_text(encoding="utf-8")
     state = load_state(state_path)
     seen = set(state.get("seen", []))
-    first_run = not state.get("initialized")
+    # Feeds we've already seeded. A subscription added later is seeded on its
+    # first encounter (not bulk-summarized), even though the app is "initialized".
+    feeds_init = set(state.get("feeds_init", []))
+    newly_seeded = 0
 
     sub_path = args.subscriptions
     if not Path(sub_path).exists() and Path("subscriptions.example.yaml").exists():
@@ -264,8 +267,17 @@ def main() -> int:
             exit_code = 1
             continue
 
+        # First time we've seen THIS feed? Seed it instead of bulk-summarizing
+        # its backlog — so adding a new subscription later doesn't summarize a
+        # dozen old episodes at once. A feed counts as already-known if it's
+        # recorded in feeds_init or any of its current items are already seen
+        # (the latter migrates installs created before per-feed tracking).
+        feed_id = feed["feed_url"]
         new_items = [it for it in items if it["id"] not in seen]
-        if first_run and not args.all_history:
+        feed_known = feed_id in feeds_init or len(new_items) < len(items)
+        feed_first = not feed_known
+
+        if feed_first and not args.all_history:
             # Seed the backlog as seen, but leave the N newest we're about to
             # summarize unseen so a failed summary is retried next run (they get
             # marked seen only after successful delivery below).
@@ -274,6 +286,8 @@ def main() -> int:
             for it in items:
                 if it["id"] not in to_summarize:
                     seen.add(it["id"])
+            if args.initial == 0 and args.backfill == 0:
+                newly_seeded += 1
         # With --all-history we do NOT seed; every not-yet-done video stays a
         # candidate so the whole backlog gets summarized over time.
         if args.backfill > 0:
@@ -327,7 +341,15 @@ def main() -> int:
             state["seen"] = sorted(seen)
             save_state(state_path, state)
 
+        # This feed is now initialized; future runs only act on genuinely new
+        # items from it (unless --all-history keeps the whole backlog in play).
+        if not args.all_history:
+            feeds_init.add(feed_id)
+            state["feeds_init"] = sorted(feeds_init)
+            save_state(state_path, state)
+
     state["seen"] = sorted(seen)
+    state["feeds_init"] = sorted(feeds_init)
     state["initialized"] = True
     save_state(state_path, state)
 
@@ -335,8 +357,9 @@ def main() -> int:
     if output_dir.exists() and any(output_dir.glob("*.md")):
         build_index(output_dir, Path(args.index_file))
 
-    if first_run and args.initial == 0 and not args.all_history:
-        print("First run: seeded state; new items from now on will be summarized.",
+    if newly_seeded:
+        print(f"Seeded {newly_seeded} new subscription(s); new items from now on "
+              "will be summarized. Use --backfill N to summarize recent ones now.",
               file=sys.stderr)
     return exit_code
 
