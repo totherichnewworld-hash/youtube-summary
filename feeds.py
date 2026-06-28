@@ -21,11 +21,24 @@ from __future__ import annotations
 
 import re
 import sys
+from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree as ET
 
 import requests
 
 ATOM = "{http://www.w3.org/2005/Atom}"
+
+
+def _normalize_date(value: str) -> str:
+    """Turn an RSS pubDate (RFC 822) into an ISO date so filenames and the
+    index sort and read sensibly. Returns the original string if unparseable."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    try:
+        return parsedate_to_datetime(value).date().isoformat()
+    except (TypeError, ValueError):
+        return value
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -225,7 +238,7 @@ def parse_podcast_feed(feed_url: str, limit: int = 15) -> list[dict]:
             episodes.append({
                 "id": (item.findtext("guid") or "").strip() or audio_url,
                 "title": item.findtext("title") or "(untitled)",
-                "published": item.findtext("pubDate") or "",
+                "published": _normalize_date(item.findtext("pubDate") or ""),
                 "audio_url": audio_url,
                 "page_url": item.findtext("link") or "",
                 "description": item.findtext("description") or "",
