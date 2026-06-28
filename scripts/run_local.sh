@@ -20,8 +20,9 @@ fi
 # Get the latest committed state so we don't redo items Actions already did.
 git pull --rebase --autostash origin "$branch" || true
 
-# Run. Pass through any extra args (e.g. --backfill 1).
-python run.py "$@"
+# Run YouTube here (your residential IP isn't blocked); let GitHub Actions
+# handle podcasts (its Deepgram key lives there). Override by passing --kinds.
+python run.py --kinds youtube "$@"
 
 # Commit and push whatever changed (summaries, transcripts, state, index).
 git add state.json summaries transcripts SUMMARIES.md 2>/dev/null || true

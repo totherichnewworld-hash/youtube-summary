@@ -341,13 +341,21 @@ def _fetch_transcript_ytdlp(video_id: str, languages: list[str]) -> str:
 # Summarization with Claude
 # ---------------------------------------------------------------------------
 
+def _is_capacity_error(e: Exception) -> bool:
+    """A provider error meaning the request was too big (tokens/context/rate)."""
+    s = str(e).lower()
+    return any(t in s for t in (
+        "413", "rate_limit", "too large", "request too large",
+        "context length", "maximum context", "reduce your message",
+    ))
+
+
 def summarize(meta: dict, transcript: str, prompt_template: str,
               model: str | None = None, max_tokens: int = DEFAULT_MAX_TOKENS,
               max_transcript_chars: int = DEFAULT_MAX_TRANSCRIPT_CHARS) -> str:
     import llm
 
-    if len(transcript) > max_transcript_chars:
-        transcript = transcript[:max_transcript_chars] + "\n\n[transcript truncated]"
+    transcript = transcript[:max_transcript_chars]
 
     # Substitute placeholders without str.format so free-form custom prompts
     # (which may contain stray { } characters) never crash.
@@ -362,13 +370,29 @@ def summarize(meta: dict, transcript: str, prompt_template: str,
         f"Published: {meta.get('published', '')}\n"
         f"URL: {meta.get('url', '')}"
     )
-    user_content = f"{header}\n\n{instructions}\n\n---\nTranscript:\n{transcript}"
     system = (
         "You write clear, accurate summaries of video and podcast transcripts. "
         "Stay faithful to the source and never invent details."
     )
-    # Backend (Claude / OpenAI-compatible / local) is chosen by LLM_PROVIDER.
-    return llm.complete(system, user_content, model=model, max_tokens=max_tokens)
+    # On a too-large/rate-limit error (common on small free tiers like Groq's
+    # 12k tokens/min), shrink the transcript and output budget and retry, so a
+    # long video still produces a summary instead of failing outright.
+    cur_chars = len(transcript)
+    cur_tokens = max_tokens
+    for attempt in range(4):
+        body = transcript[:cur_chars]
+        if cur_chars < len(transcript):
+            body += "\n\n[transcript truncated to fit the model's limit]"
+        user_content = f"{header}\n\n{instructions}\n\n---\nTranscript:\n{body}"
+        try:
+            return llm.complete(system, user_content, model=model, max_tokens=cur_tokens)
+        except Exception as e:
+            if attempt == 3 or not _is_capacity_error(e):
+                raise
+            cur_tokens = max(512, cur_tokens // 2)
+            cur_chars = max(1500, cur_chars // 2)
+            print(f"    (request too large; retrying smaller: ~{cur_chars} chars, "
+                  f"{cur_tokens} max tokens)", file=sys.stderr)
 
 
 CORRECTION_SYSTEM = (

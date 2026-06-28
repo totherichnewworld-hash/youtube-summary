@@ -224,6 +224,10 @@ def main() -> int:
     p.add_argument("--max-per-run", type=int, default=0, metavar="N",
                    help="Process at most N items this run (oldest first); the "
                         "rest are picked up on later runs. 0 = no limit.")
+    p.add_argument("--kinds", default=os.environ.get("KINDS", ""),
+                   help="Only process these kinds (comma-separated: youtube,"
+                        "podcast). Empty = all. Use 'youtube' for local runs and "
+                        "let Actions handle podcasts.")
     p.add_argument("--strict", action="store_true", default=_env_flag("STRICT", False),
                    help="Exit non-zero (red run) if any item fails. Default: a "
                         "skipped/failed item is a warning and the run stays green "
@@ -249,9 +253,17 @@ def main() -> int:
     subs = feeds.load_subscriptions(sub_path)
     print(f"{len(subs)} subscription(s).", file=sys.stderr)
 
+    kinds = {k.strip() for k in args.kinds.split(",") if k.strip()}
+
     exit_code = 0
     for sub in subs:
         link = sub["url"]
+        # Skip kinds we're not handling this run (without a network call):
+        # YouTube links classify as 'youtube'; everything else is a podcast.
+        if kinds:
+            rough = "youtube" if feeds.classify(link) == "youtube" else "podcast"
+            if rough not in kinds:
+                continue
         # Per-subscription prompt overrides the shared default prompt.txt.
         sub_prompt = sub.get("prompt") or prompt_template
         try:
