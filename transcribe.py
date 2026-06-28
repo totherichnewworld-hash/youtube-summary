@@ -132,8 +132,13 @@ def _deepgram(audio_url: str, language: str | None) -> str:
     if not key:
         raise RuntimeError("DEEPGRAM_API_KEY is not set")
     params = {"model": "nova-2", "smart_format": "true", "punctuate": "true"}
+    language = language or os.environ.get("TRANSCRIBE_LANGUAGE")
     if language:
         params["language"] = language
+    else:
+        # nova-2 defaults to English; auto-detect so non-English audio (e.g.
+        # Chinese podcasts) isn't transcribed as garbage/near-empty.
+        params["detect_language"] = "true"
     resp = requests.post(
         "https://api.deepgram.com/v1/listen",
         params=params,
@@ -160,6 +165,7 @@ def _assemblyai(audio_url: str, language: str | None,
     headers = {"authorization": key}
 
     body = {"audio_url": audio_url}
+    language = language or os.environ.get("TRANSCRIBE_LANGUAGE")
     if language:
         body["language_code"] = language
     else:

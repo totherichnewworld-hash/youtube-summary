@@ -29,6 +29,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import requests
+
 # ---------------------------------------------------------------------------
 # Configuration defaults (overridable via CLI flags or environment variables)
 # ---------------------------------------------------------------------------
@@ -216,7 +218,21 @@ def enumerate_channel_videos(channel_id: str, limit: int | None = None) -> list[
 # ---------------------------------------------------------------------------
 
 def fetch_transcript(video_id: str, languages: list[str]) -> str:
-    """Fetch a transcript, trying the requested languages, then any available."""
+    """Fetch a YouTube transcript: try the captions API, then fall back to
+    yt-dlp's subtitle download (more robust when YouTube blocks the first)."""
+    try:
+        return _fetch_transcript_api(video_id, languages)
+    except Exception as api_err:
+        try:
+            text = _fetch_transcript_ytdlp(video_id, languages)
+        except Exception:
+            text = ""
+        if text:
+            return text
+        raise api_err  # surface the original, more descriptive error
+
+
+def _fetch_transcript_api(video_id: str, languages: list[str]) -> str:
     from youtube_transcript_api import YouTubeTranscriptApi
 
     def join(segments) -> str:
@@ -247,6 +263,38 @@ def fetch_transcript(video_id: str, languages: list[str]) -> str:
         listing = YouTubeTranscriptApi.list_transcripts(video_id)
         transcript = next(iter(listing))
         return join(transcript.fetch())
+
+
+def _fetch_transcript_ytdlp(video_id: str, languages: list[str]) -> str:
+    """Download subtitles (manual or auto-generated) with yt-dlp and flatten
+    the VTT to plain text. Tries the preferred languages, then any available."""
+    from yt_dlp import YoutubeDL
+    import transcribe  # reuse the VTT/SRT parser
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    opts = {"skip_download": True, "writesubtitles": True,
+            "writeautomaticsub": True, "quiet": True, "ignoreerrors": True}
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False) or {}
+
+    subs = {**(info.get("subtitles") or {}), **(info.get("automatic_captions") or {})}
+    if not subs:
+        return ""
+    # Pick the best language: a requested one, else the first available.
+    order = list(languages) + [code for code in subs if code not in languages]
+    for code in order:
+        tracks = subs.get(code)
+        if not tracks:
+            continue
+        track = next((t for t in tracks if t.get("ext") == "vtt"), tracks[0])
+        if not track.get("url"):
+            continue
+        body = requests.get(track["url"], headers={"User-Agent": USER_AGENT},
+                            timeout=30).text
+        text = transcribe._parse_vtt_srt(body)
+        if text.strip():
+            return text
+    return ""
 
 
 # ---------------------------------------------------------------------------

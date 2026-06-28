@@ -224,6 +224,10 @@ def main() -> int:
     p.add_argument("--max-per-run", type=int, default=0, metavar="N",
                    help="Process at most N items this run (oldest first); the "
                         "rest are picked up on later runs. 0 = no limit.")
+    p.add_argument("--strict", action="store_true", default=_env_flag("STRICT", False),
+                   help="Exit non-zero (red run) if any item fails. Default: a "
+                        "skipped/failed item is a warning and the run stays green "
+                        "as long as it did its other work.")
     args = p.parse_args()
 
     state_path = Path(args.state_file)
@@ -254,7 +258,8 @@ def main() -> int:
             feed = feeds.resolve(link)
         except Exception as e:
             print(f"! Could not resolve {link}: {e}", file=sys.stderr)
-            exit_code = 1
+            if args.strict:
+                exit_code = 1
             continue
 
         print(f"\n# {feed['title']} ({feed['kind']})", file=sys.stderr)
@@ -264,7 +269,8 @@ def main() -> int:
             items = collect_items(feed, scan_limit, all_history=args.all_history)
         except Exception as e:
             print(f"  ! Could not read feed: {e}", file=sys.stderr)
-            exit_code = 1
+            if args.strict:
+                exit_code = 1
             continue
 
         # First time we've seen THIS feed? Seed it instead of bulk-summarizing
@@ -308,7 +314,8 @@ def main() -> int:
             except Exception as e:
                 print(f"    ! no transcript, skipping: {e}", file=sys.stderr)
                 seen.add(item["id"])  # don't retry items that will never transcribe
-                exit_code = 1
+                if args.strict:
+                    exit_code = 1
                 continue
 
             # Optional: clean up the transcript for readability. On failure,
@@ -321,7 +328,8 @@ def main() -> int:
                 except Exception as e:
                     print(f"    ! cleanup failed, using raw transcript: {e}",
                           file=sys.stderr)
-                    exit_code = 1
+                    if args.strict:
+                        exit_code = 1
 
             summary = None
             if args.summary:
@@ -333,7 +341,8 @@ def main() -> int:
                 except Exception as e:
                     print(f"    ! summarize failed (retry next run): {e}",
                           file=sys.stderr)
-                    exit_code = 1
+                    if args.strict:
+                        exit_code = 1
                     continue  # leave unseen so it's retried
 
             deliver(item, summary, transcript, output_dir, transcript_dir)

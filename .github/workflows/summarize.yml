@@ -71,6 +71,8 @@ jobs:
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           # Transcription (set whichever provider you use)
           TRANSCRIBER: ${{ vars.TRANSCRIBER || 'deepgram' }}
+          # Optional: force a transcription language (e.g. zh). Unset = auto-detect.
+          TRANSCRIBE_LANGUAGE: ${{ vars.TRANSCRIBE_LANGUAGE }}
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
           # Email delivery (SMTP) — optional
