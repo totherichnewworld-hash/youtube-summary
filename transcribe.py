@@ -113,9 +113,30 @@ def _parse_vtt_srt(body: str) -> str:
             out.append(line)
     return "\n".join(out)
 
+def _resolve_audio_url(audio_url: str) -> str:
+    """Follow redirects to the final media URL.
+
+    Some podcast feeds use tracking/redirect URLs (e.g. xiaoyuzhou's
+    dts-api.../track/...). A cloud transcriber fetching the tracking URL may get
+    the short redirect response instead of the audio, yielding an near-empty
+    transcript. Resolving to the final URL ourselves avoids that.
+    """
+    try:
+        r = requests.head(audio_url, allow_redirects=True, timeout=60,
+                          headers={"User-Agent": "Mozilla/5.0"})
+        if r.url and r.ok and (r.headers.get("content-type", "").startswith("audio")
+                               or r.headers.get("content-type", "").startswith("video")
+                               or "mp" in r.headers.get("content-type", "")):
+            return r.url
+    except Exception:
+        pass
+    return audio_url
+
+
 def transcribe(audio_url: str, provider: str | None = None,
                language: str | None = None) -> str:
     provider = (provider or os.environ.get("TRANSCRIBER", "deepgram")).lower()
+    audio_url = _resolve_audio_url(audio_url)
     if provider == "deepgram":
         return _deepgram(audio_url, language)
     if provider == "assemblyai":
